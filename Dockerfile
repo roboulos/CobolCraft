@@ -1,40 +1,15 @@
-FROM docker.io/library/ubuntu:plucky AS base
+FROM node:20-slim
 
 WORKDIR /app
 
+COPY package.json ./
+RUN npm install --production
 
-FROM base AS build
+COPY server.js ./
 
-# Install build dependencies
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        gcc g++ make gnucobol3 zlib1g-dev curl openjdk-21-jre-headless && \
-    rm -rf /var/lib/apt/lists/*
+# Routes directory for dynamic route loading
+RUN mkdir -p /app/routes
 
-# Perform data extraction first to allow Docker to cache this layer
-COPY Makefile .
-RUN make data
+EXPOSE 8080
 
-# Copy source files and build
-COPY cpp ./cpp
-COPY codegen ./codegen
-COPY src ./src
-RUN make -j $(nproc) GCVERSION=32
-
-
-FROM base AS deploy
-
-# Install runtime dependencies
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        libcob4 zlib1g tini && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy the build results
-COPY --from=build /app/cobolcraft .
-COPY --from=build /app/data/generated/reports/*.json ./data/generated/reports/
-COPY --from=build /app/data/generated/data ./data/generated/data
-
-# Run the server within Tini (to handle signals properly)
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/app/cobolcraft"]
+CMD ["node", "server.js"]
